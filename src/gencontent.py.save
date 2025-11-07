@@ -1,0 +1,32 @@
+Dfrom textnode import *
+from htmlnode import *
+import os
+
+def extract_title(markdown):
+	for line in markdown.splitlines():
+		if line.startswith("# "):
+			title = line[2:].strip()
+			if title:
+				return title
+	raise Exception("h1 header not found")
+
+def generate_page(from_path, template_path, dest_path):
+	print(f"Generating a page {from_path} to {dest_path} using {template_path}")
+	with open(from_path, "r", encoding="utf-8") as f:
+		from_string = f.read()
+	with open(template_path, "r", encoding="utf-8") as f:
+		template_string = f.read()
+
+	content_html = markdown_to_html_node(from_string).to_html()
+	title = extract_title(from_string)
+
+
+	page_html = template_string.replace("{{ Title }}", title)
+	page_html = page_html.replace("{{ Content }}", content_html)
+
+	dest_dir = os.path.dirname(dest_path)
+	if dest_dir:
+		os.makedirs(dest_dir, exist_ok=True)
+
+	with open(dest_path, "w", encoding="utf-8") as f:
+		f.write(page_html)

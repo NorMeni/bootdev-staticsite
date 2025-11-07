@@ -136,10 +136,32 @@ def text_to_textnodes(text):
 	return split_nodes_delimiter(fifth_round, "_", TextType.ITALIC)
 
 def markdown_to_blocks(markdown):
-	list = markdown.split("\n\n")
-	for text in list:
-		text.strip()
-	return list
+	current = []
+	blocks = []
+	current_kind = None
+
+	for raw in markdown.splitlines():
+		line = raw.rstrip("\n")
+		if line.strip() == "":
+			if current:
+				blocks.append("\n".join(current))
+				current = []
+				current_kind = None
+			continue
+
+		line_kind = "quote" if line.lstrip().startswith(">") else "para"
+
+		if current_kind in (None, line_kind):
+			current.append(line)
+			current_kind = line_kind
+		else:
+			blocks.append("\n".join(current))
+			current = [line]
+			current_kind = line_kind
+	if current:
+		blocks.append("\n".join(current))
+	#print(repr(blocks))
+	return blocks
 
 def block_to_block_type(markdown):
 	#check code
@@ -153,16 +175,23 @@ def block_to_block_type(markdown):
 		return BlockType.HEADING
 
 	#check unordered and quote
-	if markdown.startswith(">") or markdown.startswith("- "):
-		prefix = ">" if markdown.startswith(">") else "- "
-		lines_list = markdown.split("\n")
-		for text in lines_list:
-			if text.startswith(prefix) and len(text) > len(prefix):
+	lines_list = markdown.split("\n")
+	first = next((ln for ln in lines_list if ln.strip() != ""), "")
+	if first.lstrip().startswith(">"):
+		for ln in lines_list:
+			if ln.strip() == "":
 				continue
-			else:
+			s = ln.lstrip()
+			if not s.startswith(">"):
 				return BlockType.PARAGRAPH
-		return BlockType.UNORDERED_LIST if prefix == "- " else BlockType.QUOTE
-
+		return BlockType.QUOTE
+	elif first.lstrip().startswith("- "):
+		for ln in lines_list:
+			if ln.strip() == "":
+				continue
+			if not ln.lstrip().startswith("- "):
+				return BlockType.PARAGRAPH
+		return BlockType.UNORDERED_LIST
 	#check ordered list
 	if markdown.startswith("1. "):
 		lines = markdown.split("\n")
@@ -211,16 +240,32 @@ def markdown_to_html_node(markdown):
 					else: continue
 				node_list.append(HTMLNode("ul", None, items))
 			case BlockType.QUOTE:
+				print("QUOTE BLOCK:", repr(text))
 				items = []
+				lines = []
 				for raw in text.splitlines():
 					line = raw.lstrip()
-					if line.startswith("> "):
-						text = line[2:].strip()
-						if not text: continue
-						tns = text_to_textnodes(text)
-						quote_children = [text_node_to_html_node(tn) for tn in tns]
-						items.append(HTMLNode("p", None, quote_children))
-				node_list.append(HTMLNode("blockquote", None, items))
+					if line.startswith(">"):
+						text = line[1:]
+						if text.startswith(" "): text = text[1:]
+
+						if text.strip() == "":
+							if lines:
+								text = " ".join(lines).strip()
+								tns = text_to_textnodes(text)
+								items.append(HTMLNode("p", None, [text_node_to_html_node(tn) for tn in tns]))
+								lines = []
+						else: lines.append(text)
+				if lines:
+					text = " ".join(lines).strip()
+					tns = text_to_textnodes(text)
+					items.append(HTMLNode("p", None, [text_node_to_html_node(tn) for tn in tns]))
+				if items and items[0].tag== "p":
+					first_children = items[0].children
+					rest = items[1:]
+					node_list.append(HTMLNode("blockquote", None, first_children + rest))
+				else:
+					node_list.append(HTMLNode("blockquote", None, items))
 			case BlockType.ORDERED_LIST:
 				items = []
 				for raw in text.splitlines():
